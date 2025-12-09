@@ -1,0 +1,384 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{amsthm}
+\usepackage{listings}
+\usepackage{url}
+
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\scriptsize,
+    breaklines=true,
+    captionpos=b,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red}
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+
+\begin{document}
+
+\title{Optimal Placement of Wireless Transmitters: \\ A Rigorous Analysis of the Maximum Independent Set Problem}
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Student Name}
+\IEEEauthorblockA{\textit{Dept. of Computer Science} \\
+\textit{University of Florida}\\
+Gainesville, USA \\
+email@ufl.edu}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Student Name}
+\IEEEauthorblockA{\textit{Dept. of Computer Science} \\
+\textit{University of Florida}\\
+Gainesville, USA \\
+email@ufl.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+This paper addresses the critical optimization challenge of Wireless Transmitter Placement (WTP), formally modeled as the Maximum Independent Set (MIS) problem on interference graphs. We rigorously prove the NP-Completeness of the problem via a reduction from 3-SAT. Beyond standard complexity results, we develop a comprehensive theoretical framework incorporating probabilistic bounds on the independence number of random graphs and an Integer Linear Programming (ILP) formulation. We implement and contrast an exact recursive backtracking algorithm with a polynomial-time degree-based greedy heuristic. Our analysis derives the explicit time complexity of the exact solver using characteristic equations. Furthermore, extensive experimental evaluation on Erd\H{o}s-R\'enyi random graphs reveals a distinct phase transition in solution density and quantifies the trade-off between optimality and computational tractability, demonstrating the efficacy of greedy approaches for large-scale network design.
+\end{abstract}
+
+\begin{IEEEkeywords}
+NP-Complete, Maximum Independent Set, 3-SAT Reduction, Probabilistic Method, Linear Programming, Phase Transition.
+\end{IEEEkeywords}
+
+\section{Introduction}
+The rapid expansion of wireless networks necessitates efficient resource management strategies. A fundamental problem in network design is the placement of transmitters (e.g., Wi-Fi access points, cellular towers) in a given geographical area. Two conflicting objectives govern this design: maximizing the number of active transmitters to ensure coverage and capacity, and minimizing interference between transmitters operating on the same frequency.
+
+Interference occurs when two transmitters are located within a specific proximity threshold, causing signal degradation and packet loss. To ensure reliable communication, no two active transmitters can be within this interference range. This constraint naturally leads to a combinatorial optimization problem: select the maximum subset of potential transmitter locations such that no two selected locations interfere.
+
+In this paper, we abstract this physical constraint to the \textbf{Maximum Independent Set (MIS)} problem. We formally define the problem, prove its computational hardness, and evaluate algorithmic solutions. Furthermore, we explore the theoretical properties of the problem through probabilistic analysis and linear programming relaxations, providing a robust mathematical foundation for our experimental findings.
+
+\section{Problem Abstraction and Definitions}
+
+\subsection{Physical Layer Abstraction: From SINR to Graph}
+In a realistic wireless environment, successful reception is determined by the Signal-to-Interference-plus-Noise Ratio (SINR). For a receiver at location $j$ to decode a signal from transmitter $i$, the SINR must exceed a hardware-specific threshold $\beta$:
+\begin{equation}
+\text{SINR}_{ij} = \frac{P_i g_{ij}}{N_0 + \sum_{k \in \mathcal{T}, k \neq i} P_k g_{kj}} \ge \beta
+\end{equation}
+where $P_i$ is the transmission power, $g_{ij} = d_{ij}^{-\alpha}$ is the path loss channel gain with exponent $\alpha > 2$, $N_0$ is ambient noise, and $\mathcal{T}$ is the set of active transmitters.
+While the general SINR model induces a complex interference landscape, if we assume uniform power $P$ and a worst-case noise floor, the condition simplifies. A transmission $i \to j$ fails if any other active transmitter $k$ is "too close". Specifically, under the geometric disk model, we define a conflict radius $r_c$ such that if $dist(l_i, l_k) < r_c$, simultaneous transmission is impossible. This physical constraint maps directly to the edges of our interference graph $G=(V, E)$, validating our independent set formulation.
+
+\subsection{Wireless Interference Model}
+Let $L = \{l_1, l_2, \dots, l_n\}$ denote a set of candidate locations for wireless transmitters. We define a critical interference distance, $d_{int}$. Signal interference occurs between two transmitters at locations $l_i$ and $l_j$ if their Euclidean distance satisfies $dist(l_i, l_j) < d_{int}$.
+
+We construct an \textbf{Interference Graph} $G = (V, E)$ to model these constraints:
+\begin{itemize}
+    \item The vertex set $V = \{v_1, \dots, v_n\}$ corresponds bijectively to the location set $L$.
+    \item The edge set $E$ contains an edge $(v_i, v_j)$ if and only if $dist(l_i, l_j) < d_{int}$.
+\end{itemize}
+
+The objective of selecting the maximum number of non-interfering transmitters transforms into finding the maximum subset of vertices in $G$ such that no two vertices share an edge.
+
+\subsection{Formal Graph Definitions}
+\begin{definition}[Independent Set]
+Given a graph $G=(V, E)$, a set $S \subseteq V$ is an independent set if for every pair of vertices $u, v \in S$, $(u, v) \notin E$.
+\end{definition}
+
+\begin{definition}[Maximum Independent Set Problem]
+Given a graph $G=(V, E)$ and an integer $k$, decide if there exists an independent set $S$ such that $|S| \ge k$. The optimization version asks to find an independent set of maximum cardinality, denoted by $\alpha(G)$.
+\end{definition}
+
+\section{Complexity Analysis}
+We establish the computational complexity of the Independent Set problem.
+
+\begin{theorem}
+The Independent Set problem is NP-Complete.
+\end{theorem}
+
+\begin{proof}
+The proof proceeds in two steps: demonstrating membership in NP and establishing NP-Hardness via reduction.
+
+\textbf{1. Membership in NP}:
+Given a candidate solution $S \subseteq V$, verification can be performed in polynomial time. Specifically, checking that no two vertices in $S$ are adjacent requires $O(|S|^2) \subseteq O(|V|^2)$ operations. Verifying $|S| \ge k$ is $O(1)$. Thus, Independent Set $\in$ NP.
+
+\textbf{2. Reduction from 3-SAT}:
+We construct a polynomial-time reduction from 3-SAT, a canonical NP-Complete problem. Let $\phi = C_1 \land C_2 \land \dots \land C_m$ be a 3-CNF formula where each clause $C_i = (l_{i1} \lor l_{i2} \lor l_{i3})$ consists of three literals.
+
+We construct a graph $G=(V, E)$ and integer $k$ as follows:
+\begin{enumerate}
+    \item \textbf{Clause Gadgets}: For each clause $C_i$, generate three vertices representing its literals. Connect these vertices to form a triangle ($K_3$). This structure enforces the constraint that any independent set includes at most one vertex (true literal) per clause.
+    \item \textbf{Consistency Constraints}: For every variable $x_i$, add an edge between every node representing $x_i$ and every node representing $\neg x_i$. This prevents the simultaneous selection of a variable and its negation.
+    \item \textbf{Parameter}: Set $k = m$.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering \includegraphics[width=\linewidth]{reduction_example.png}
+\caption{Reduction from 3-SAT to Independent Set. Triangles represent clauses; dashed red lines represent conflict edges between contradictory literals.}
+\label{fig:reduction}
+\end{figure}
+
+\textbf{Proof of Correctness}:
+($\Rightarrow$) Assume $\phi$ is satisfiable. Let $A$ be a satisfying assignment. Select exactly one true literal from each clause to form set $S$. Since the assignment is consistent, no conflicting literals ($x_i$ and $\neg x_i$) are chosen. Since we select one node per clause triangle, internal triangle edges are not violated. Thus, $|S|=m=k$ and $S$ is independent.
+
+($\Leftarrow$) Assume $G$ has an independent set $S$ of size $k=m$. Since $G$ consists of $m$ clause triangles (plus consistency edges), and an independent set can contain at most one vertex from a $K_3$, $S$ must contain exactly one vertex from each clause. Assign logical TRUE to the literals in $S$. The absence of edges between complementary literals in $S$ ensures a consistent truth assignment. Since every clause contributes a true literal, $\phi$ is satisfied.
+\end{proof}
+
+\section{Theoretical Analysis}
+In this section, we explore the theoretical properties of the Independent Set problem beyond worst-case complexity.
+
+\subsection{Probabilistic Analysis}
+We employ the Probabilistic Method to bound the maximum independent set size in random graphs $G(n, p)$. Let $X$ be the random variable denoting the number of independent sets of cardinality $k$.
+By linearity of expectation:
+\begin{equation}
+E[X] = \binom{n}{k} (1-p)^{\binom{k}{2}}
+\end{equation}
+Using the inequality $\binom{n}{k} \le (\frac{ne}{k})^k$:
+\begin{equation}
+E[X] \le \left(\frac{ne}{k}\right)^k (1-p)^{k(k-1)/2}
+\end{equation}
+For sufficiently large $n$, setting $k \approx \frac{2 \ln n}{\ln(1/(1-p))}$ drives $E[X] \to 0$. By Markov's Inequality ($P(X \ge 1) \le E[X]$), this implies that $\alpha(G) < k$ almost surely. This theoretical upper bound validates the sharp decay observed in our phase transition experiments.
+
+\subsection{Linear Programming Relaxation}
+The Maximum Independent Set problem can be formulated as an Integer Linear Program (ILP). Let $x_v$ be a binary variable for each vertex $v \in V$, where $x_v=1$ if $v \in S$ and $0$ otherwise.
+
+\textbf{ILP Formulation}:
+\begin{align}
+\text{maximize} \quad & \sum_{v \in V} x_v \\
+\text{subject to} \quad & x_u + x_v \le 1 \quad \forall (u, v) \in E \\
+& x_v \in \{0, 1\} \quad \forall v \in V
+\end{align}
+
+\textbf{LP Relaxation}:
+Relaxing the integrality constraint to $0 \le x_v \le 1$ permits a polynomial-time solution via standard LP algorithms. However, the \textit{integrality gap}---the ratio between the optimal LP and ILP solutions---can be significant. For a complete graph $K_n$, $\alpha(G)=1$, yet the LP relaxation permits $x_v = 0.5$ for all $v$, yielding an objective value of $n/2$. This $O(n)$ gap indicates that standard LP relaxation provides a weak approximation for general graphs.
+
+\subsection{Relationship to Vertex Cover}
+The Independent Set problem is closely related to the Vertex Cover problem. A set $S \subseteq V$ is an independent set if and only if $V \setminus S$ is a vertex cover.
+\begin{theorem}
+$\alpha(G) + \beta(G) = |V|$, where $\alpha(G)$ is the size of the maximum independent set and $\beta(G)$ is the size of the minimum vertex cover.
+\end{theorem}
+\begin{proof}
+Let $S$ be an independent set. Since no edge has both endpoints in $S$, every edge must have at least one endpoint in $V \setminus S$. Thus, $V \setminus S$ is a vertex cover. Conversely, if $C$ is a vertex cover, then for every edge $(u, v)$, at least one of $u, v$ is in $C$. Thus, no edge has both endpoints in $V \setminus C$, implying $V \setminus C$ is an independent set.
+\end{proof}
+This duality implies that finding the maximum independent set is equivalent to finding the minimum vertex cover. However, while Vertex Cover has a simple 2-approximation algorithm, Independent Set cannot be approximated within any constant factor unless P=NP.
+
+\subsection{Lower Bounds on Independence Number}
+While finding the exact independence number is hard, lower bounds can be derived from graph properties. A classic result by Caro and Wei provides a lower bound based on the degree sequence.
+\begin{theorem}[Caro-Wei]
+For any graph $G=(V, E)$,
+\begin{equation}
+\alpha(G) \ge \sum_{v \in V} \frac{1}{d(v) + 1}
+\end{equation}
+\end{theorem}
+This bound is constructive: a randomized algorithm that deletes vertices in a random order and adds a vertex to the independent set if none of its neighbors were previously added achieves this expected size. This provides a theoretical justification for degree-based heuristics, as removing high-degree nodes early (which contribute little to the sum) preserves the "potential" of the remaining graph.
+
+\subsection{Approximation Hardness}
+The Independent Set problem is notoriously hard to approximate.
+\begin{theorem}[H\r{a}stad, 1999]
+For any $\epsilon > 0$, it is NP-hard to approximate the Maximum Independent Set problem within a factor of $n^{1-\epsilon}$.
+\end{theorem}
+This foundational result, derived from the PCP Theorem, implies that for general graphs, no polynomial-time algorithm can provide a reasonable worst-case approximation guarantee. Consequently, heuristics must rely on structural properties of specific graph classes (e.g., random graphs) to succeed.
+
+\subsection{Fixed Parameter Tractability}
+While the general Independent Set problem is NP-Complete, it is important to consider its behavior when the parameter $k$ (solution size) is small. A problem is Fixed Parameter Tractable (FPT) if it can be solved in $f(k) \cdot n^{O(1)}$ time.
+For Independent Set, a simple branching algorithm runs in $O(1.2599^k \cdot n)$.
+\begin{theorem}
+The Independent Set problem is FPT with respect to the parameter $k$.
+\end{theorem}
+\begin{proof}
+Consider a search tree where at each step we pick a vertex $v$. Either $v$ is in the independent set, or one of its neighbors must be (to cover the edge).
+If $v \in S$, we decrease $k$ by 1 and remove $N(v)$.
+If $v \notin S$, we recurse.
+However, a better bound is obtained by Vertex Cover. Since $VC = V \setminus IS$, finding an IS of size $k$ is equivalent to finding a VC of size $n-k$. Vertex Cover is FPT with time $O(1.2738^k + kn)$.
+This perspective is crucial for wireless networks where we might be satisfied with a guaranteed number of transmitters $k$, even if it's not the absolute maximum.
+\end{proof}
+
+\subsection{Exact Algorithm Complexity Derivation}
+Our exact algorithm uses a branching strategy. Let $T(n)$ be the worst-case running time for a graph with $n$ vertices.
+In each step, we pick a vertex $v$ of degree $d(v)$.
+1.  \textbf{Branch 1}: Include $v$. We remove $v$ and its neighbors. The problem size reduces to $n - d(v) - 1$.
+2.  \textbf{Branch 2}: Exclude $v$. We remove $v$. The problem size reduces to $n - 1$.
+
+The recurrence relation is:
+\begin{equation}
+T(n) = T(n-1) + T(n - d(v) - 1) + O(n)
+\end{equation}
+To solve this, we look for a solution of the form $T(n) = x^n$. Substituting this into the recurrence (ignoring the linear term):
+\begin{equation}
+x^n = x^{n-1} + x^{n-d-1}
+\end{equation}
+Dividing by $x^{n-d-1}$:
+\begin{equation}
+x^{d+1} - x^d - 1 = 0
+\end{equation}
+We analyze the roots for different values of $d$:
+\begin{itemize}
+    \item For $d=0$ (isolated node): $x - 1 - 1 = 0 \implies x=2$. (Worst case).
+    \item For $d=1$: $x^2 - x - 1 = 0 \implies x \approx 1.618$ (Golden Ratio).
+    \item For $d=2$: $x^3 - x^2 - 1 = 0 \implies x \approx 1.465$.
+    \item For $d=3$: $x^4 - x^3 - 1 = 0 \implies x \approx 1.380$.
+\end{itemize}
+As the degree $d$ of the pivot vertex increases, the base of the complexity exponent decreases, significantly pruning the search space. This mathematical property justifies the "highest-degree first" branching heuristic often used in optimized solvers tailored for worst-case performance.
+
+\section{Algorithms}
+
+\subsection{Exact Algorithm (Backtracking)}
+We implemented a recursive backtracking algorithm.
+\begin{algorithmic}
+\STATE \textbf{Function} ExactIS(G, candidates, current\_set)
+\IF{candidates is empty}
+    \RETURN current\_set
+\ENDIF
+\STATE $v \leftarrow$ candidates[0]
+\STATE \textbf{Branch 1}: Include $v$
+\STATE new\_candidates $\leftarrow$ candidates $\setminus$ ($v \cup$ neighbors($v$))
+\STATE set1 $\leftarrow$ ExactIS(G, new\_candidates, current\_set $\cup \{v\}$)
+\STATE \textbf{Branch 2}: Exclude $v$
+\STATE set2 $\leftarrow$ ExactIS(G, candidates[1:], current\_set)
+\RETURN max(set1, set2)
+\end{algorithmic}
+
+\subsection{Greedy Heuristic}
+For large graphs, we use a greedy heuristic based on minimum degree.
+\begin{algorithmic}
+\STATE \textbf{Function} GreedyIS(G)
+\STATE $S \leftarrow \emptyset$
+\WHILE{$G$ is not empty}
+    \STATE $v \leftarrow$ node with minimum degree in $G$
+    \STATE $S \leftarrow S \cup \{v\}$
+    \STATE Remove $v$ and neighbors($v$) from $G$
+\ENDWHILE
+\RETURN $S$
+\end{algorithmic}
+
+\begin{theorem}
+The greedy algorithm outputs an independent set $S_{greedy}$ such that $|S_{greedy}| \ge \frac{|V|}{\Delta + 1}$, where $\Delta$ is the maximum degree of the graph.
+\end{theorem}
+\begin{proof}
+Let $S_{opt}$ be a maximum independent set. For every vertex $v \in S_{greedy}$ selected by the algorithm, $v$ and its neighbors (at most $\Delta$ of them) are removed from the graph. Thus, each selection accounts for at most $\Delta + 1$ vertices. Since all vertices are eventually removed, $|S_{greedy}| (\Delta + 1) \ge |V|$. While this bound is loose compared to $|S_{opt}|$, it provides a polynomial-time guarantee based on structural sparsity.
+\end{proof}
+
+\textbf{Counter-Example Analysis}:
+The greedy strategy is not universally optimal. Consider the pathological instance in Figure \ref{fig:greedy_fail}. The greedy algorithm selects the leaves ($k_1, k_3, k_4$) because they have minimum degree 1. It then selects the center $c$. The resulting set has size 4. However, the optimal solution selects the neighbors of the leaves ($k_1$'s neighbor, etc.), achieving a size of 5. This illustrates the local optima trap inherent in degree-based heuristics.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{greedy_failure.png}
+
+\caption{Counter-example where Greedy fails. Greedy picks leaves $k_1, k_3, k_4$ and center $c$ (Size 4). Optimal is $\{k_1, k_2, c, k_3, k_4\}$ (Size 5).}
+\label{fig:greedy_fail}
+\end{figure}
+
+\section{Experimental Results}
+We implemented both algorithms in Python and tested them on Erdos-Renyi random graphs $G(n, p)$.
+
+\subsection{Running Time Analysis}
+We varied $N$ from 5 to 25 with $p=0.3$. Table \ref{tab:time} and Figure \ref{fig:time_n} present the results.
+
+\begin{table}[htbp]
+\caption{Running Time (seconds) vs N}
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{N} & \textbf{Exact Time (s)} & \textbf{Greedy Time (s)} \\
+\hline
+5 & 0.000015 & 0.000029 \\
+15 & 0.000295 & 0.000054 \\
+25 & 0.003926 & 0.000093 \\
+\hline
+\end{tabular}
+\label{tab:time}
+\end{center}
+\end{table}
+
+The exact algorithm exhibits characteristic exponential complexity. While feasible for $N=25$ ($t \approx 0.004$s), the growth rate implies intractability for $N > 60$. In contrast, the greedy algorithm's runtime is negligible and grows polynomially, making it scalable to massive networks.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{time_vs_n.png}
+
+\caption{Running Time vs Number of Nodes ($p=0.3$). Note the exponential curve for Exact.}
+\label{fig:time_n}
+\end{figure}
+
+\subsection{Approximation Quality}
+We measured the approximation ratio $\rho = \frac{|S_{greedy}|}{|S_{exact}|}$. Figure \ref{fig:ratio_n} shows that the greedy algorithm performs very well, often finding the optimal solution ($\rho=1.0$) or close to it ($\rho > 0.85$).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{ratio_vs_n.png}
+
+\caption{Approximation Ratio vs Number of Nodes. The greedy heuristic maintains high quality.}
+\label{fig:ratio_n}
+\end{figure}
+
+\subsection{Effect of Density}
+We fixed $N=20$ and varied $p$ from 0.1 to 0.9.
+-   \textbf{Time}: As shown in Figure \ref{fig:time_p}, the exact algorithm actually runs \textit{faster} as density increases. This is because high density means nodes have many neighbors; selecting a node eliminates a large portion of the graph, pruning the search tree deeper.
+-   \textbf{Quality}: Figure \ref{fig:ratio_p} shows the ratio is stable but fluctuates.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{time_vs_p.png}
+
+\caption{Running Time vs Density ($N=20$). Higher density leads to faster pruning for the exact algorithm.}
+\label{fig:time_p}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{ratio_vs_p.png}
+
+\caption{Approximation Ratio vs Density ($N=20$).}
+\label{fig:ratio_p}
+\end{figure}
+
+\subsection{Phase Transition Analysis}
+We generated a heatmap (Figure \ref{fig:phase}) showing the average size of the Maximum Independent Set for varying $N$ and $p$.
+We observe a clear "Phase Transition". As $p$ increases, the MIS size drops rapidly. For sparse graphs ($p=0.1$), the MIS size is large ($\approx N/2$). For dense graphs ($p=0.9$), it drops to $\approx 2$. This aligns with our probabilistic bound $O(\frac{\ln n}{p})$.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{phase_transition.png}
+
+\caption{Phase Transition of MIS Size. The size decreases rapidly as density increases, following theoretical predictions.}
+\label{fig:phase}
+\end{figure}
+
+\section{Discussion and Future Work}
+Our results highlight the fundamental trade-off between optimality and efficiency. The exact algorithm is viable only for small or very dense graphs. The greedy heuristic is extremely fast and provides good approximations, making it suitable for real-time wireless network configuration.
+Future work could explore:
+\begin{itemize}
+    \item \textbf{Meta-heuristics}: Implementing Simulated Annealing or Genetic Algorithms to improve upon the greedy solution without the cost of exact backtracking.
+    \item \textbf{Distributed Algorithms}: Developing decentralized protocols where transmitters self-organize into an independent set, crucial for ad-hoc networks.
+    \item \textbf{Interference Models}: Extending the model to SINR (Signal-to-Interference-plus-Noise Ratio) constraints rather than simple distance thresholds.
+\end{itemize}
+
+\section{Conclusion}
+In this work, we presented a rigorous analysis of the Maximum Independent Set problem applied to wireless transmitter placement. We established NP-Completeness via a constructive 3-SAT reduction and derived theoretical bounds using the Probabilistic Method. Our experimental results on Erd\H{o}s-R\'enyi graphs confirm the theoretical phase transition predictions and quantify the efficacy of greedy approximations. While exact methods are limited by exponential time complexity, our findings demonstrate that polynomial-time heuristics provide high-quality solutions for random interference graphs, offering a practical approach for scalable network design.
+
+\section{Code Availability}
+The complete source code for the exact algorithm, greedy heuristic, and experimental visualization is open-source and available at:
+\begin{center}
+\url{https://github.com/akvarun/npcomplete-network}
+\end{center}
+The repository contains:
+\begin{itemize}
+    \item \texttt{independent\_set\_solver.py}: Core implementation of Exact and Greedy algorithms.
+    \item \texttt{visualize\_*.py}: Scripts for generating the reduction example, phase transition heatmaps, and running time/ratio plots.
+\end{itemize}
+Please refer to the repository for reproduction instructions and raw experimental data.
+
+\begin{thebibliography}{00}
+\bibitem{b1} T. H. Cormen, C. E. Leiserson, R. L. Rivest, and C. Stein, \textit{Introduction to Algorithms}, 3rd ed. MIT Press, 2009.
+\bibitem{b2} M. R. Garey and D. S. Johnson, \textit{Computers and Intractability: A Guide to the Theory of NP-Completeness}. W. H. Freeman, 1979.
+\bibitem{b3} R. M. Karp, "Reducibility among combinatorial problems," in \textit{Complexity of Computer Computations}, R. E. Miller and J. W. Thatcher, Eds. Plenum Press, 1972, pp. 85-103.
+\bibitem{b4} N. Alon and J. H. Spencer, \textit{The Probabilistic Method}, 4th ed. Wiley, 2016.
+\bibitem{b5} R. G. Downey and M. R. Fellows, \textit{Parameterized Complexity}. Springer, 1999.
+\end{thebibliography}
+
+\end{document}
