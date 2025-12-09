@@ -42,6 +42,3 @@ python visualize_phase_transition.py
 *   **Phase Transition**: Observed a sharp drop in independent set size as graph connectivity increases, consistent with probabilistic bounds.
 *   **Greedy Performance**: The greedy degree-based heuristic provides near-optimal solutions (>90% approximation ratio) in negligible time for random graphs, making it suitable for practical network design.
 
-### Authors
-University of Florida
-Dept. of Computer Science
